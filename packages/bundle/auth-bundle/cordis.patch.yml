@@ -1,0 +1,20 @@
+# The dsh-auth bundle patch: an opt-in authentication layer for a dsh profile.
+#
+# It mounts the local authentication provider (`ctx.authn`) — accounts,
+# scrypt-hashed passwords, and sliding-expiry bearer tokens in the harness
+# home's auth.db, with the superadmin seeded on first boot — plus the HTTP
+# gate that enforces it: the self-contained login and account-administration
+# pages under /auth/*, the page-navigation redirect, and the session-cookie
+# contract the /api fence in dsh-client-connection resolves. Session-owner
+# binding lands in a later milestone (TODO in the package READMEs). Both rows
+# are enabled by default inside this bundle; a deployment opts in or out by
+# adding or dropping the bundle from its profile, or overrides a row by id in
+# a later patch layer. Readiness order is inject-driven: auth-gate declares
+# inject [authn, webServer], so it activates after the provider row and only
+# in compositions that carry a web server.
+
+- insert:
+    - id: authn-local
+      name: '@deepseek-ai/dsh-authn-local'
+    - id: auth-gate
+      name: '@deepseek-ai/dsh-auth-gate'

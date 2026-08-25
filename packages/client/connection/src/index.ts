@@ -2,12 +2,15 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-attachment'
+// Optional authentication fence: activates the authn Context merge; read through ctx.get only.
+import type {} from '@deepseek-ai/dsh-auth'
 // Activates the webServer Context merge used below.
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
 import { API_PATH, HOST_EVENTS_PATH, MUX_EVENTS_PATH } from './api-path.ts'
 import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
 import { assertTrustedAuthority, isTrustedApiRequest } from './api-request-trust.ts'
+import { DEFAULT_AUTH_COOKIE_NAME, resolveAuthnUser } from './api-auth-gate.ts'
 import { HostConnectionService } from './rpc-host.ts'
 import { rejectWebSocketUpgrade, WebSocketDownlinks } from './websocket-downlink.ts'
 
@@ -59,11 +62,19 @@ export interface ConnectionConfig {
   trustedHosts?: string[]
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
+  /**
+   * Session-cookie name the optional authentication fence resolves. Read only
+   * when an `authn` service is mounted (the opt-in auth bundle); must match
+   * the auth gate's `cookieName`, whose default this shares. A renamed cookie
+   * that only one side knows about locks every client out.
+   */
+  authCookieName?: string
 }
 
 export const Config: z<ConnectionConfig> = z.object({
   trustedHosts: z.array(String).default([]),
   maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
+  authCookieName: z.string().pattern(/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/).default(DEFAULT_AUTH_COOKIE_NAME),
 })
 
 /**
@@ -75,8 +86,10 @@ export const Config: z<ConnectionConfig> = z.object({
  * environment-variable name is configured and where from, which is
  * reconnaissance no anonymous caller should have. `trustedHosts` is a
  * DNS-rebinding fence, explicitly not authentication, so the whole
- * configuration plane stays loopback-same-origin until a real authentication
- * layer exists. `llm.discoverModels` belongs to that plane on both counts: it
+ * configuration plane stays loopback-same-origin for an unauthenticated
+ * deployment; with the auth bundle mounted, the pin relaxes to "loopback or
+ * authenticated superadmin" (see the privileged check in `apply` below).
+ * `llm.discoverModels` belongs to that plane on both counts: it
  * carries a draft credential, and it makes the HOST issue a GET to a URL the
  * caller chose and reports back the status or the parsed body — an anonymous
  * LAN caller would have a probe for whatever the host can reach and the
@@ -121,9 +134,12 @@ const PRIVILEGED_METHODS = new Set([
 /**
  * Mounts the API gateway under the browser transport prefix. Every request on
  * the prefix passes the browser-trust fence first (DNS-rebinding and
- * cross-site defense — [api-request-trust](./api-request-trust.ts));
- * privileged methods additionally pass it with an empty trust list, which
- * pins them to loopback.
+ * cross-site defense — [api-request-trust](./api-request-trust.ts)), then the
+ * optional authentication fence: with an `authn` service mounted, a request
+ * without a valid session cookie is answered 401 before any dispatch;
+ * privileged methods additionally pass the trust fence with an empty trust
+ * list, which pins them to loopback — or, with authentication mounted, to an
+ * authenticated superadmin from any trusted authority.
  * @param ctx - Host plugin context.
  * @param config - resolved plugin config (schema defaults applied).
  */
@@ -131,6 +147,7 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
   // The Loader resolves schema defaults; hand-built test contexts may pass none.
   const trustedHosts = config?.trustedHosts ?? []
   const maxRequestBodyBytes = config?.maxRequestBodyBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES
+  const authCookieName = config?.authCookieName ?? DEFAULT_AUTH_COOKIE_NAME
   // Config boundary: a malformed entry fails the load loudly here rather than
   // silently authorizing its hostname prefix at request time.
   for (const entry of trustedHosts) assertTrustedAuthority(entry)
@@ -145,7 +162,14 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
       if (method !== undefined
         && PRIVILEGED_METHODS.has(method)
         && !isTrustedApiRequest(request, [])) {
-        return new Response('forbidden', { status: 403 })
+        // With authentication mounted the loopback pin relaxes to "loopback or
+        // superadmin". The cookie resolves again here (the route handler's 401
+        // fence already ran) because the bridge-created Request is the only
+        // object this check shares with that fence — no per-request state is
+        // threaded through the interceptor/fallback split.
+        const authn = ctx.get('authn')
+        const user = authn === undefined ? null : await resolveAuthnUser(authn, request.headers, authCookieName)
+        if (user?.role !== 'superadmin') return new Response('forbidden', { status: 403 })
       }
       if (request.method === 'GET' && (pathname === MUX_EVENTS_PATH || pathname === HOST_EVENTS_PATH)) {
         return new Response('upgrade required', {
@@ -167,6 +191,16 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
         res.end('forbidden')
         return
       }
+      // Optional authentication fence: with an authn service mounted, every
+      // /api request must carry a valid session cookie. The check lives in the
+      // route handler — before the bridge — because Remote interceptor claims
+      // bypass the fetch fallback where the privileged-method check runs.
+      const authn = ctx.get('authn')
+      if (authn !== undefined && (await resolveAuthnUser(authn, req.headers, authCookieName)) === null) {
+        res.writeHead(401, { 'content-type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ error: 'authentication required' }))
+        return
+      }
       await bridge(req, res, fetchHandler, maxRequestBodyBytes)
     },
   }
@@ -180,9 +214,17 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
     ): void => {
       apiCtx.effect(() => apiCtx.webServer.registerUpgrade({
         path,
-        handler: (req, socket, head) => {
+        handler: async (req, socket, head) => {
           if (!isTrustedApiRequest(req, trustedHosts)) {
             rejectWebSocketUpgrade(socket)
+            return
+          }
+          // The same optional authentication fence as the /api route, applied
+          // before protocol negotiation so an unauthenticated upgrade never
+          // opens an event stream.
+          const authn = ctx.get('authn')
+          if (authn !== undefined && (await resolveAuthnUser(authn, req.headers, authCookieName)) === null) {
+            rejectWebSocketUpgrade(socket, 401)
             return
           }
           return handle(req, socket, head)

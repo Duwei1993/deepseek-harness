@@ -98,6 +98,14 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'authn',
+    pkg: 'auth',
+    title: 'Authentication seam',
+    mode: 'seam',
+    implementations: ['authn-local'],
+    note: 'The seam resolves bearer tokens to accounts and owns credential login; enforcement lives in the auth-gate pages/redirects and the client-connection /api fence, with session-owner binding still to come.',
+  },
+  {
     key: 'attachments',
     pkg: 'attachment',
     title: 'Durable binary attachment storage',

@@ -1974,6 +1974,31 @@
       "doc": "docs/subsystems/feedback.md",
       "symbol": "MessageFeedbackDeleteResult",
       "source": "packages/feedback/message-feedback/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/auth.md",
+      "symbol": "UserId",
+      "source": "packages/auth/auth/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/auth.md",
+      "symbol": "AuthRole",
+      "source": "packages/auth/auth/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/auth.md",
+      "symbol": "AuthUser",
+      "source": "packages/auth/auth/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/auth.md",
+      "symbol": "AuthLogin",
+      "source": "packages/auth/auth/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/auth.md",
+      "symbol": "CreateUserInput",
+      "source": "packages/auth/auth/src/types.ts"
     }
   ]
 }

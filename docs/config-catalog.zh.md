@@ -350,6 +350,60 @@ export interface Config {
 
 来源：[`packages/attachment/attachment-local/src/index.ts:51`](../packages/attachment/attachment-local/src/index.ts)
 
+<a id="deepseek-aidsh-auth-gate"></a>
+
+## `@deepseek-ai/dsh-auth-gate`
+
+需要：`authn` · `webServer`
+
+```ts config-catalog
+/** Plugin config. */
+export interface AuthGateConfig {
+  /**
+   * Session-cookie name. Rename only together with the connection plugin's
+   * `authCookieName`; the `/api` fence resolves the same cookie.
+   */
+  cookieName?: string
+  /**
+   * The path the page gate internally fetches to serve an allowed navigation:
+   * the composition's ungated index address (the frontend fallback answers it).
+   * The gate owns `/` itself, so this must name a different path.
+   */
+  indexPath?: string
+}
+```
+
+来源：[`packages/auth/auth-gate/src/index.ts:50`](../packages/auth/auth-gate/src/index.ts)
+
+<a id="deepseek-aidsh-authn-local"></a>
+
+## `@deepseek-ai/dsh-authn-local`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /**
+   * Database file path, or `:memory:` for an in-process store. Defaults to
+   * `auth.db` under the resolved harness home (`$DSH_HOME` > `~/.dsh`).
+   */
+  path?: string
+  /**
+   * Password for the seeded superadmin account. A TEST HOOK: without it the
+   * seed is the well-known default `123456` and the seed warning names it.
+   * Consulted only while the store is empty; later boots ignore it.
+   */
+  seedSuperadminPassword?: string
+  /** Bearer-token lifetime in milliseconds; each resolve slides it forward. Defaults to 7 days. */
+  tokenTtlMs?: number
+  /** Lockout the first consecutive credential failure applies. Defaults to 1 second. */
+  rateLimitBaseDelayMs?: number
+  /** Longest lockout one failure streak can reach. Defaults to 5 minutes. */
+  rateLimitMaxDelayMs?: number
+}
+```
+
+来源：[`packages/auth/authn-local/src/index.ts:41`](../packages/auth/authn-local/src/index.ts)
+
 <a id="deepseek-aidsh-bash-local"></a>
 
 ## `@deepseek-ai/dsh-bash-local`
@@ -417,10 +471,17 @@ export interface ConnectionConfig {
   trustedHosts?: string[]
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
+  /**
+   * Session-cookie name the optional authentication fence resolves. Read only
+   * when an `authn` service is mounted (the opt-in auth bundle); must match
+   * the auth gate's `cookieName`, whose default this shares. A renamed cookie
+   * that only one side knows about locks every client out.
+   */
+  authCookieName?: string
 }
 ```
 
-来源：[`packages/client/connection/src/index.ts:50`](../packages/client/connection/src/index.ts)
+来源：[`packages/client/connection/src/index.ts:53`](../packages/client/connection/src/index.ts)
 
 <a id="deepseek-aidsh-client-hmr"></a>
 
@@ -3300,6 +3361,7 @@ export interface Config {
 抽象服务类——部署时应改为加载具体的实现包（参见[能力 seam](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)）。
 
 - `@deepseek-ai/dsh-attachment` — 抽象 `AttachmentStore`（[`packages/attachment/attachment/src/index.ts`](../packages/attachment/attachment/src/index.ts)）
+- `@deepseek-ai/dsh-auth` — 抽象 `AuthnService`（[`packages/auth/auth/src/index.ts`](../packages/auth/auth/src/index.ts)）
 - `@deepseek-ai/dsh-code-runtime` — 抽象 `CodeRuntime`（[`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts)）
 - `@deepseek-ai/dsh-compaction` — 抽象 `CompactionEngine`（[`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts)）
 - `@deepseek-ai/dsh-credentials` — 抽象 `Credentials`（[`packages/credentials/credentials/src/index.ts`](../packages/credentials/credentials/src/index.ts)）
@@ -3324,6 +3386,7 @@ export interface Config {
 - `@deepseek-ai/dsh-anonymous-user-id`（[`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts)）
 - `@deepseek-ai/dsh-app-boot`（[`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts)）
 - `@deepseek-ai/dsh-atomic-write`（[`packages/util/atomic-write/src/index.ts`](../packages/util/atomic-write/src/index.ts)）
+- `@deepseek-ai/dsh-auth-bundle`（[`packages/bundle/auth-bundle/src/index.ts`](../packages/bundle/auth-bundle/src/index.ts)）
 - `@deepseek-ai/dsh-base`（[`packages/bundle/base/src/index.ts`](../packages/bundle/base/src/index.ts)）
 - `@deepseek-ai/dsh-brand`（[`packages/util/brand/src/index.ts`](../packages/util/brand/src/index.ts)）
 - `@deepseek-ai/dsh-client-test-runtime`（[`packages/test-support/client-runtime/src/index.ts`](../packages/test-support/client-runtime/src/index.ts)）

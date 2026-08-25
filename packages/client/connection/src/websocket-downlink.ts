@@ -138,16 +138,19 @@ export class WebSocketDownlinks {
 }
 
 /**
- * Reject an untrusted upgrade before protocol negotiation.
+ * Reject an untrusted or unauthenticated upgrade before protocol negotiation.
  * @param socket - Raw HTTP socket that remains owned by the caller.
+ * @param status - 403 for a trust-fence refusal, 401 when the authentication
+ *   fence found no valid session cookie.
  */
-export function rejectWebSocketUpgrade(socket: Duplex): void {
+export function rejectWebSocketUpgrade(socket: Duplex, status: 401 | 403 = 403): void {
+  const text = status === 401 ? 'unauthorized' : 'forbidden'
   socket.end([
-    'HTTP/1.1 403 Forbidden',
+    `HTTP/1.1 ${String(status)} ${status === 401 ? 'Unauthorized' : 'Forbidden'}`,
     'Connection: close',
     'Content-Type: text/plain; charset=utf-8',
-    'Content-Length: 9',
+    `Content-Length: ${String(text.length)}`,
     '',
-    'forbidden',
+    text,
   ].join('\r\n'))
 }

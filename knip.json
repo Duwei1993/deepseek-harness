@@ -664,6 +664,12 @@
       "ignoreDependencies": [
         "@deepseek-ai/.+"
       ]
+    },
+    "packages/bundle/auth-bundle": {
+      "ignoreDependencies": [
+        "@deepseek-ai/dsh-authn-local",
+        "@deepseek-ai/dsh-auth-gate"
+      ]
     }
   }
 }

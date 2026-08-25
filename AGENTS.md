@@ -36,6 +36,7 @@ packages/    @deepseek-ai/dsh-<pkg> workspaces at packages/<group>/<pkg>/
   hooks/       Claude Code/Codex hook bridges + wire-protocol library
   session/     durable session data: persistence, projection, titles, telemetry
   identity/    anonymous identity
+  auth/        authentication capability: account seam + local provider + HTTP gate (opt-in bundle)
   settings/    user-settings capability + file provider
   credentials/ credential/authorization capabilities + env/.env provider
   acp/         automation-only Agent Client Protocol server

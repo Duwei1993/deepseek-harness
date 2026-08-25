@@ -464,6 +464,60 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'authn',
+    summary: 'Abstract authentication provider mounted as `ctx.authn`.',
+    description: 'Abstract authentication provider mounted as `ctx.authn`. Implementations own the account store, password hashing, and token issuance; every method here is the whole contract consumers may rely on.',
+    methods: [
+      {
+        signature: 'abstract resolveToken(token: string): Promise<AuthUser | null>',
+        description: 'Resolve a bearer token to its account. The provider slides the token\'s expiry forward on a successful resolve.',
+        parameters: [{ name: 'token', description: 'the bearer token as minted by {@link login}.' }],
+        returns: 'the account, or `null` when the token is unknown, expired, or belongs to a disabled account.',
+      },
+      {
+        signature: 'abstract login(username: string, password: string): Promise<AuthLogin>',
+        description: 'Authenticate by username and password and mint a bearer token. A `mustChangePassword` account still receives a token; enforcement of the change is the gate consumer\'s job, not this seam\'s.',
+        parameters: [{ name: 'username', description: 'the account\'s login name.' }, { name: 'password', description: 'the plaintext password, verified against the stored hash.' }],
+        returns: 'the account and the fresh token.',
+        throws: ['{AuthError} `AUTH_INVALID_CREDENTIALS` for an unknown username or wrong password (one shared wording).', '{AuthError} `AUTH_USER_DISABLED` when the account is disabled.', '{AuthError} `AUTH_RATE_LIMITED` while a failure-streak lockout is running.'],
+      },
+      {
+        signature: 'abstract changePassword(userId: UserId, oldPassword: string, newPassword: string): Promise<AuthUser>',
+        description: 'Replace an account\'s password after verifying the current one; clears `mustChangePassword`. Existing tokens survive the change in this skeleton (see the package README\'s deferred work).',
+        parameters: [{ name: 'userId', description: 'the account to update.' }, { name: 'oldPassword', description: 'the current password, verified before any change.' }, { name: 'newPassword', description: 'the replacement password.' }],
+        returns: 'the updated account.',
+        throws: ['{AuthError} `AUTH_USER_NOT_FOUND` for an unknown id.', '{AuthError} `AUTH_INVALID_CREDENTIALS` when the current password does not match.', '{AuthError} `AUTH_INVALID_INPUT` when the new password is empty.'],
+      },
+      {
+        signature: 'abstract listUsers(): Promise<AuthUser[]>',
+        description: 'List every account in stable username order.',
+        parameters: [],
+        returns: 'all accounts, without credential material.',
+      },
+      {
+        signature: 'abstract createUser(input: CreateUserInput): Promise<AuthUser>',
+        description: 'Create an account. The new account starts enabled with `mustChangePassword: true`.',
+        parameters: [{ name: 'input', description: 'the account to create.' }],
+        returns: 'the created account.',
+        throws: ['{AuthError} `AUTH_USERNAME_TAKEN` when the username exists.', '{AuthError} `AUTH_INVALID_INPUT` for an empty username or password.'],
+      },
+      {
+        signature: 'abstract resetPassword(userId: UserId, newPassword: string): Promise<AuthUser>',
+        description: 'Administratively replace an account\'s password without the current one; sets `mustChangePassword: true` so the next login must rotate it.',
+        parameters: [{ name: 'userId', description: 'the account to reset.' }, { name: 'newPassword', description: 'the replacement password.' }],
+        returns: 'the updated account.',
+        throws: ['{AuthError} `AUTH_USER_NOT_FOUND` for an unknown id.', '{AuthError} `AUTH_INVALID_INPUT` for an empty password.'],
+      },
+      {
+        signature: 'abstract setDisabled(userId: UserId, disabled: boolean): Promise<AuthUser>',
+        description: 'Enable or disable an account. Disabling blocks future logins and voids existing tokens at resolve time.',
+        parameters: [{ name: 'userId', description: 'the account to update.' }, { name: 'disabled', description: 'the new disabled state.' }],
+        returns: 'the updated account.',
+        throws: ['{AuthError} `AUTH_USER_NOT_FOUND` for an unknown id.'],
+      },
+    ],
+  },
+  {
     key: 'authorization',
     summary: '`ctx.authorization`: a registry of credential-obtaining flows, one attempt at a time per key.',
     description: '`ctx.authorization`: a registry of credential-obtaining flows, one attempt at a time per key.',
@@ -2950,6 +3004,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AuthLogin',
+    declaration: 'export interface AuthLogin {\n    user: AuthUser;\n    token: string;\n}',
+  },
+  {
     name: 'AuthorizationEntry',
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
@@ -2996,6 +3054,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AuthorizationStatus',
     declaration: 'export type AuthorizationStatus = \'authorized\' | \'cancelled\';',
+  },
+  {
+    name: 'AuthRole',
+    declaration: 'export type AuthRole = \'superadmin\' | \'user\';',
+  },
+  {
+    name: 'AuthUser',
+    declaration: 'export interface AuthUser {\n    id: UserId;\n    username: string;\n    displayName: string;\n    role: AuthRole;\n    tenant?: string;\n    disabled: boolean;\n    mustChangePassword: boolean;\n}',
   },
   {
     name: 'BackendRegistry',
@@ -3200,6 +3266,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CreateTeamTaskRequest',
     declaration: 'export interface CreateTeamTaskRequest {\n    readonly subject: string;\n    readonly description: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n}',
+  },
+  {
+    name: 'CreateUserInput',
+    declaration: 'export interface CreateUserInput {\n    username: string;\n    displayName?: string;\n    password: string;\n    role?: AuthRole;\n    tenant?: string;\n}',
   },
   {
     name: 'CredentialInfo',
@@ -4928,6 +4998,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UpdateTeamTaskRequest',
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
+  },
+  {
+    name: 'UserId',
+    declaration: 'export type UserId = Branded<\'UserId\'>;',
   },
   {
     name: 'UserMessage',
