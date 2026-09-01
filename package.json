@@ -151,6 +151,8 @@
     "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
     "release:publish": "tsx scripts/release/publish.ts",
     "dsh": "node --import tsx/esm apps/cli/src/bin.ts",
+    "dsh:aios": "DSH_HOME=$PWD/../home node --import tsx/esm apps/cli/src/bin.ts --profile aios --port 3080 --no-open",
+    "dsh:aios:plugin": "DSH_HOME=$PWD/../home node --import tsx/esm apps/cli/src/bin.ts plugin --profile aios",
     "demo:ptc": "node scripts/demo-ptc.mjs",
     "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
     "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
