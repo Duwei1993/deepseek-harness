@@ -151,7 +151,11 @@ export interface ModelCatalog {
 
 /** One client-requested mutation of a still-pending queue item. */
 export type QueueAction =
-  | { readonly kind: 'edit'; readonly content: readonly ContentBlock[] }
+  | {
+    readonly kind: 'edit'
+    /** Non-empty text-only replacement content. */
+    readonly content: readonly ContentBlock[]
+  }
   | { readonly kind: 'remove' }
   | { readonly kind: 'steer' }
 
@@ -187,6 +191,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
       readonly requestedCwd: string
       readonly existingCwd?: string
     }
+    'session/writer-held': { readonly sessionId: SessionId }
     'session/agent-busy': { readonly reason: string }
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }
@@ -219,6 +224,8 @@ export interface SkillListRequest {
 
 /** One skill available to the Session's human-facing composer. */
 export interface SkillEntry {
+  /** Absolute SKILL.md path when supplied by a filesystem provider. */
+  readonly path?: string
   /** Kebab-case identifier referenced as `/name`. */
   readonly name: string
   /** Short routing description. */
@@ -308,6 +315,7 @@ export interface SessionPromptRequest {
   readonly requestId: SessionRequestId
   readonly sessionId: SessionId
   readonly mode: 'queue' | 'steer'
+  /** At least one non-whitespace text part or attachment. */
   readonly content: readonly PromptContentPart[]
   readonly clientTimeZone?: string
 }
@@ -353,6 +361,8 @@ export interface SessionCancelValue {
 
 /** Request to open one path prepared by a Session-aware caller on the Host desktop. */
 export interface SessionOpenWorkspacePathRequest {
+  /** File-manager navigation when requested; omission uses the default application. */
+  readonly action?: 'reveal'
   /** Path after best-effort Session workspace resolution, in Host filesystem syntax. */
   readonly path: string
 }
@@ -402,23 +412,29 @@ export interface SessionWireHeader {
   readonly agentPreset?: string
 }
 
-/** Browser wire form of one Session surface operation. */
+/** Browser wire surface operation; replacement endpoints are earlier event seqs in surface order. */
 export type SessionWireSurfaceOp =
   | 'append'
-  | { readonly op: 'replace'; readonly start: number; readonly end: number }
+  | { readonly op: 'replace'; readonly startSeq: number; readonly endSeq: number }
 
-/** One history-page record. V2 embeds compact Assistant streams inside events. */
+/** One history-page record with compact Assistant streams embedded inside events. */
 export type SessionHistoryRecord = SessionEventEntry
 
-/** Session event wire form; durable readers own recognition of merge-extensible event names. */
+/**
+ * Exact Session event envelope accepted by the Client journal adapter.
+ * Surface events require surfaceOp; only non-Assistant surface events may cite earlier sources.
+ * Durable readers own recognition of merge-extensible event names.
+ */
 export interface SessionWireEvent {
   readonly type: string
   readonly seq: number
   readonly time: number
   readonly data: JsonValue
   readonly ignorable?: true
-  readonly sourceEventSeqs?: number[]
-  readonly surfaceOp?: SessionWireSurfaceOp
+  /** Earlier sources on current surface events; opaque JSON on unknown ignorable events. */
+  readonly sourceEventSeqs?: JsonValue
+  /** Canonical placement on current surface events; opaque JSON on unknown ignorable events. */
+  readonly surfaceOp?: JsonValue
 }
 
 /** One message-aligned backwards-history request. */
@@ -510,19 +526,6 @@ export type SessionFollowFrame =
   | SessionEventEntry
   | { readonly type: 'assistant-stream'; readonly frame: SessionAssistantStreamFrame }
 
-/** One pending inbox occurrence in the authoritative queue snapshot. */
-export interface SessionQueuedItem {
-  readonly id: MessageId
-  readonly placement: 'queued' | 'steering' | 'context'
-  /** Prompt-RPC identity from the queued message's user source; clients retire the matching local submission echo on it. */
-  readonly rpcId?: SessionRequestId
-  /** JSON-safe message fields consumed by pending-queue presentation. */
-  readonly message: {
-    readonly id: MessageId
-    readonly content: readonly JsonValue[]
-  }
-}
-
 /** Browser-safe background-job row. */
 export interface SessionJob {
   readonly id: JobId
@@ -536,7 +539,6 @@ export interface SessionJob {
 
 /** Complete live control baseline emitted once per control stream generation. */
 export interface SessionControlBaseline {
-  readonly queues: Readonly<Record<SessionId, readonly SessionQueuedItem[]>>
   readonly jobs: Readonly<Record<SessionId, readonly SessionJob[]>>
   readonly projections: Readonly<Record<SessionId, SessionProjectionBaseline>>
 }
@@ -552,7 +554,6 @@ export interface SessionProjectionUpdate {
 /** Host-wide live state stream. Each generation starts with exactly one baseline. */
 export type SessionControlFrame =
   | { readonly type: 'baseline'; readonly value: SessionControlBaseline }
-  | { readonly type: 'queue'; readonly sessionId: SessionId; readonly items: readonly SessionQueuedItem[] }
   | { readonly type: 'jobs'; readonly sessionId: SessionId; readonly jobs: readonly SessionJob[] }
   | ({ readonly type: 'projection' } & SessionProjectionUpdate)
 

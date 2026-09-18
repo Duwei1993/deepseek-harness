@@ -43,12 +43,13 @@ function childRow(id: SessionId, activity: 'running' | 'inactive'): SubagentList
   return { kind: 'child', id, mode: 'continuable', label: 'worker', activity, hasChildren: false }
 }
 
-function promptRequest(clientTimeZone?: string) {
+function promptRequest(clientTimeZone?: string, delivery: 'queue' | 'steer' = 'queue') {
   return {
     requestId: REQUEST_ID,
     parentSessionId: PARENT,
     childSessionId: CHILD,
     mode: 'continuable' as const,
+    delivery,
     content: [{ type: 'text' as const, text: 'continue' }],
     ...clientTimeZone === undefined ? {} : { clientTimeZone },
   }
@@ -165,6 +166,15 @@ describe('subagent prompt Remote', () => {
     expect(delivery).not.toHaveBeenCalled()
   })
 
+  it('rejects an unknown delivery before admission', async () => {
+    const { subagents } = await bench({ [PARENT]: { status: 'idle' } })
+    const delivery = promptDelivery(subagents)
+
+    await expect(subagents.prompt({ ...promptRequest(), delivery: 'later' as 'queue' }, signal))
+      .rejects.toMatchObject({ code: 'gateway/bad-request' })
+    expect(delivery).not.toHaveBeenCalled()
+  })
+
   it('admits ordered image parts into durable references before delivery', async () => {
     const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
     const saveImages = vi.fn(async (inputs: readonly { mediaType: string }[]) =>
@@ -258,6 +268,15 @@ describe('subagent prompt Remote', () => {
     )
   })
 
+  it('passes steer delivery through the same admission operation', async () => {
+    const { subagents } = await bench({ [PARENT]: { status: 'running' } })
+    const delivery = promptDelivery(subagents).mockResolvedValue('m-steer' as MessageId)
+
+    await expect(subagents.prompt(promptRequest(undefined, 'steer'), signal))
+      .resolves.toEqual({ messageId: 'm-steer' })
+    expect(delivery.mock.calls[0]?.[5]).toBe('steer')
+  })
+
   it('omits the zone from the durable source when the browser reported none', async () => {
     const { subagents } = await bench({ [PARENT]: { status: 'idle' } })
     const delivery = promptDelivery(subagents).mockResolvedValue('m-2' as MessageId)
@@ -296,6 +315,7 @@ describe('subagent prompt Remote', () => {
       ['UNAUTHORIZED', 'subagent/unauthorized'],
       ['DRAINING', 'subagent/delivery-unavailable'],
       ['ACTIVATION_CLOSING', 'subagent/delivery-unavailable'],
+      ['ACTIVATION_LIMIT_REACHED', 'subagent/delivery-unavailable'],
       ['NO_PROVIDER', 'gateway/internal'],
     ]
     for (const [thrown, code] of cases) {
